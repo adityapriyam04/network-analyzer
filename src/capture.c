@@ -1,12 +1,14 @@
 #include "capture.h"
 #include "decoder.h"
 #include "tracker.h"
+#include "metrics.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 static ConnectionTracker g_tracker;
 static int g_packet_count = 0;
+static LatencyTracker g_latency;
 
 void packet_handler(u_char* args,
                     const struct pcap_pkthdr* header,
@@ -47,6 +49,7 @@ void start_capture(pcap_t* handle, int count) {
 
 void init_tracker() {
     tracker_init(&g_tracker);
+    latency_init(&g_latency);
 }
 
 void packet_handler(u_char* args,
@@ -61,6 +64,19 @@ void packet_handler(u_char* args,
         strcmp(info.protocol, "UDP") == 0) {
         tracker_update(&g_tracker, &info);
         g_packet_count++;
+    }
+
+    if (strcmp(info.protocol, "TCP") == 0) {
+        if (info.is_syn) {
+            latency_record_syn(&g_latency, &info);
+        } else if (info.is_syn_ack) {
+            double rtt = latency_compute_rtt(&g_latency, &info);
+            if (rtt >= 0) {
+                printf("[RTT] %s:%d -> %s:%d = %.2f ms\n",
+                       info.dst_ip, info.dst_port,
+                       info.src_ip, info.src_port, rtt);
+            }
+        }
     }
 
     if (g_packet_count % 100 == 0 && g_packet_count > 0) {
