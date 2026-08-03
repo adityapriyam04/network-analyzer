@@ -1,8 +1,12 @@
 #include "capture.h"
 #include "decoder.h"
+#include "tracker.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static ConnectionTracker g_tracker;
+static int g_packet_count = 0;
 
 void packet_handler(u_char* args,
                     const struct pcap_pkthdr* header,
@@ -42,7 +46,7 @@ void start_capture(pcap_t* handle, int count) {
 }
 
 void init_tracker() {
-    // Will be filled in Phase 4
+    tracker_init(&g_tracker);
 }
 
 void packet_handler(u_char* args,
@@ -55,10 +59,11 @@ void packet_handler(u_char* args,
 
     if (strcmp(info.protocol, "TCP") == 0 ||
         strcmp(info.protocol, "UDP") == 0) {
-        printf("[%s] %s:%d -> %s:%d (%u bytes)\n",
-               info.protocol,
-               info.src_ip, info.src_port,
-               info.dst_ip, info.dst_port,
-               info.length);
+        tracker_update(&g_tracker, &info);
+        g_packet_count++;
+    }
+
+    if (g_packet_count % 100 == 0 && g_packet_count > 0) {
+        tracker_print(&g_tracker);
     }
 }
