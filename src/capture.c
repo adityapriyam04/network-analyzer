@@ -1,4 +1,5 @@
 #include "capture.h"
+#include "decoder.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,6 +49,16 @@ void packet_handler(u_char* args,
                     const struct pcap_pkthdr* header,
                     const u_char* packet) {
     (void)args;
-    (void)packet;
-    printf("Packet captured: %u bytes\n", header->len);
+    PacketInfo info;
+
+    if (!decode_packet(packet, header, &info)) return;
+
+    if (strcmp(info.protocol, "TCP") == 0 ||
+        strcmp(info.protocol, "UDP") == 0) {
+        printf("[%s] %s:%d -> %s:%d (%u bytes)\n",
+               info.protocol,
+               info.src_ip, info.src_port,
+               info.dst_ip, info.dst_port,
+               info.length);
+    }
 }
