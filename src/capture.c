@@ -5,12 +5,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 
 #define PRINT_EVERY_N_FLOW_PACKETS 100
 
 static ConnectionTracker g_tracker;
+static pcap_t* g_handle = NULL;
 static int g_linktype = DLT_EN10MB; 
-static unsigned long g_flow_packets = 0;
+static int g_is_live = 0;
+
+// Counters for the final summary
+static unsigned long g_total_seen    = 0;  // every packet the callback received
+static unsigned long g_decoded       = 0;  // IPv4/IPv6 packets we could parse
+static unsigned long g_flow_packets  = 0;  // TCP + UDP packets fed into the tracker
+
 static LatencyTracker g_latency;
 
 void packet_handler(u_char* args,
@@ -88,11 +96,52 @@ pcap_t* open_capture(const char* device, char* errbuf) {
         pcap_close(handle);
         return NULL;
     }
+    g_is_live = 1;
     return handle;
 }
 
+static void on_sigint(int sig) {
+    (void)sig;
+    // Safe to call from a signal handler: pcap_breakloop only sets a flag that pcap_loop checks.
+    if (g_handle != NULL) pcap_breakloop(g_handle);
+}
+
 void start_capture(pcap_t* handle, int count) {
-    pcap_loop(handle, count, packet_handler, NULL);
+    g_handle = handle;
+
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = on_sigint;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+
+    int rc = pcap_loop(handle, count, packet_handler, NULL);
+    if (rc == PCAP_ERROR) {
+        fprintf(stderr, "Capture error: %s\n", pcap_geterr(handle));
+    }
+
+    g_handle = NULL;
+}
+
+void print_summary(pcap_t* handle) {
+    tracker_print(&g_tracker);
+
+    printf("\n=== Capture Summary ===\n");
+    printf("Packets received by callback : %lu\n", g_total_seen);
+    printf("Decoded (IPv4/IPv6)          : %lu\n", g_decoded);
+    printf("TCP/UDP packets tracked      : %lu\n", g_flow_packets);
+
+    // Kernel-level stats only exist for live captures. ps_drop counts packets
+    // the OS dropped because our callback did not keep up (buffer full).
+    if (g_is_live) {
+        struct pcap_stat st;
+        if (pcap_stats(handle, &st) == 0) {
+            printf("Received by filter (kernel)  : %u\n", st.ps_recv);
+            printf("Dropped (buffer full)        : %u\n", st.ps_drop);
+            printf("Dropped by interface/driver  : %u\n", st.ps_ifdrop);
+        }
+    }
 }
 
 void init_tracker() {
@@ -106,7 +155,9 @@ void packet_handler(u_char* args,
     (void)args;
     PacketInfo info;
 
+    g_total_seen++;
     if (!decode_packet(packet, header, g_linktype, &info)) return;
+    g_decoded++;
     
     int is_tcp = strcmp(info.protocol, "TCP") == 0;
     int is_udp = strcmp(info.protocol, "UDP") == 0;

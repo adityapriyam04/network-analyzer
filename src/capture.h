@@ -13,6 +13,9 @@ int list_capture_devices(void);
 // count = 0 means capture indefinitely
 void start_capture(pcap_t* handle, int count);
 
+// Prints the connection table plus packet/drop counters.
+void print_summary(pcap_t* handle);
+
 // Called once from main() to initialize tracker and latency modules
 void init_tracker();
 

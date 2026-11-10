@@ -21,6 +21,7 @@ int main(int argc, char** argv) {
 
     printf("Starting capture... (Ctrl+C to stop)\n");
     start_capture(handle, 0);
+    print_summary(handle);
 
     pcap_close(handle);
     return 0;
