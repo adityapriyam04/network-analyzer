@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS = -std=gnu11 -Wall -Wextra -O2 -pthread
-LDFLAGS = -lpcap -pthread
+CFLAGS = -std=gnu11 -Wall -Wextra -O2 
+LDFLAGS = -lpcap 
 
 SRCS = src/main.c src/capture.c src/decoder.c src/tracker.c src/metrics.c
 TARGET = analyzer

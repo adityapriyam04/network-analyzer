@@ -23,7 +23,7 @@ void latency_record_syn(LatencyTracker* lt, const PacketInfo* pkt) {
 }
 
 double latency_compute_rtt(LatencyTracker* lt, const PacketInfo* pkt) {
-    char key[64];
+    char key[128];
     // SYN-ACK is reversed — server replies back
     snprintf(key, sizeof(key), "%s:%d->%s:%d",
              pkt->dst_ip, pkt->dst_port,

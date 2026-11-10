@@ -1,6 +1,7 @@
 #include "tracker.h"
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
 
 static unsigned int hash_key(const char* key) {
     unsigned int hash = 0;
@@ -63,7 +64,7 @@ void tracker_print(const ConnectionTracker* t) {
 
     for (int i = 0; i < MAX_CONNECTIONS; i++) {
         if (t->slots[i].active) {
-            printf("%-45s %8lu %12lu\n",
+                printf("%-45s %8" PRIu64 " %12" PRIu64 "\n",
                    t->slots[i].key,
                    t->slots[i].packet_count,
                    t->slots[i].bytes_total);
