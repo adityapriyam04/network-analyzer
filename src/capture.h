@@ -3,8 +3,11 @@
 
 #include <pcap.h>
 
-// Opens a live capture session on the default network interface
-pcap_t* open_capture(char* errbuf);
+// Opens a live capture session on the selected interface, or the first available one.
+pcap_t* open_capture(const char* device, char* errbuf);
+
+// Prints the available capture interfaces.
+int list_capture_devices(void);
 
 // Starts the capture loop — calls packet_handler for each packet
 // count = 0 means capture indefinitely

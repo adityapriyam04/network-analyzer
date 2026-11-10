@@ -8,9 +8,9 @@
 #define MAX_CONNECTIONS 4096
 
 typedef struct {
-    char key[64];
-    char src_ip[16];
-    char dst_ip[16];
+    char key[128];
+    char src_ip[46];
+    char dst_ip[46];
     uint16_t src_port;
     uint16_t dst_port;
     uint64_t packet_count;

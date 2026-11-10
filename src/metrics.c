@@ -7,7 +7,7 @@ void latency_init(LatencyTracker* lt) {
 }
 
 void latency_record_syn(LatencyTracker* lt, const PacketInfo* pkt) {
-    char key[64];
+    char key[128];
     snprintf(key, sizeof(key), "%s:%d->%s:%d",
              pkt->src_ip, pkt->src_port,
              pkt->dst_ip, pkt->dst_port);

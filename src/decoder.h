@@ -6,11 +6,11 @@
 #include <pcap.h>
 
 typedef struct {
-    char src_ip[16];
-    char dst_ip[16];
+    char src_ip[46];
+    char dst_ip[46];
     uint16_t src_port;
     uint16_t dst_port;
-    char protocol[4];
+    char protocol[8];
     uint32_t length;
     struct timeval timestamp;
     int is_syn;

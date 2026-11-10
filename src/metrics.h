@@ -7,7 +7,7 @@
 #define MAX_PENDING_SYN 1024
 
 typedef struct {
-    char key[64];
+    char key[128];
     struct timeval ts;
     int active;
 } SynEntry;

@@ -16,7 +16,7 @@ void tracker_init(ConnectionTracker* t) {
 }
 
 void tracker_update(ConnectionTracker* t, const PacketInfo* pkt) {
-    char key[64];
+    char key[128];
     snprintf(key, sizeof(key), "%s:%d->%s:%d",
              pkt->src_ip, pkt->src_port,
              pkt->dst_ip, pkt->dst_port);

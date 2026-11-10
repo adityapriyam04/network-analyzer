@@ -14,28 +14,55 @@ void packet_handler(u_char* args,
                     const struct pcap_pkthdr* header,
                     const u_char* packet);
 
-pcap_t* open_capture(char* errbuf) {
+int list_capture_devices(void) {
+    pcap_if_t* alldevs;
+    char errbuf[PCAP_ERRBUF_SIZE];
+
+    if (pcap_findalldevs(&alldevs, errbuf) == -1) {
+        fprintf(stderr, "Could not find devices: %s\n", errbuf);
+        return 1;
+    }
+
+    if (alldevs == NULL) {
+        fprintf(stderr, "No interfaces found\n");
+        return 1;
+    }
+
+    for (pcap_if_t* dev = alldevs; dev != NULL; dev = dev->next) {
+        printf("%s%s%s\n", dev->name,
+               dev->description != NULL ? " - " : "",
+               dev->description != NULL ? dev->description : "");
+    }
+
+    pcap_freealldevs(alldevs);
+    return 0;
+}
+
+pcap_t* open_capture(const char* device, char* errbuf) {
     pcap_if_t* alldevs;
 
-    // Find all available network interfaces
     if (pcap_findalldevs(&alldevs, errbuf) == -1) {
         fprintf(stderr, "Could not find devices: %s\n", errbuf);
         return NULL;
     }
 
-    // Use the first interface found
-    if (alldevs == NULL) {
-        fprintf(stderr, "No interfaces found\n");
+    pcap_if_t* selected = alldevs;
+    if (device != NULL) {
+        while (selected != NULL && strcmp(selected->name, device) != 0) {
+            selected = selected->next;
+        }
+    }
+
+    if (selected == NULL) {
+        fprintf(stderr, "Capture interface not found: %s\n", device);
+        pcap_freealldevs(alldevs);
         return NULL;
     }
 
-    char dev[64];
-    strncpy(dev, alldevs->name, 63);
-    pcap_freealldevs(alldevs);  // free the list after copying the name
+    printf("Listening on interface: %s\n", selected->name);
 
-    printf("Listening on interface: %s\n", dev);
-
-    pcap_t* handle = pcap_open_live(dev, 65536, 1, 1000, errbuf);
+    pcap_t* handle = pcap_open_live(selected->name, 65536, 1, 1000, errbuf);
+    pcap_freealldevs(alldevs);
     if (handle == NULL) {
         fprintf(stderr, "Could not open device: %s\n", errbuf);
         return NULL;
@@ -64,6 +91,13 @@ void packet_handler(u_char* args,
         strcmp(info.protocol, "UDP") == 0) {
         tracker_update(&g_tracker, &info);
         g_packet_count++;
+    }
+
+    if (strcmp(info.protocol, "ICMP") == 0 ||
+        strcmp(info.protocol, "ICMPv6") == 0) {
+        printf("[%s] %s -> %s (%u bytes)\n",
+               info.protocol, info.src_ip, info.dst_ip, info.length);
+        fflush(stdout);
     }
 
     if (strcmp(info.protocol, "TCP") == 0) {
