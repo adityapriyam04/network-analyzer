@@ -9,25 +9,51 @@
 #include <arpa/inet.h>
 
 #define ETHERNET_HEADER_LEN 14
+#define NULL_HEADER_LEN     4   // BSD/macOS loopback (DLT_NULL / DLT_LOOP)
+
+int decoder_supports_linktype(int linktype) {
+    return linktype == DLT_EN10MB || linktype == DLT_NULL || linktype == DLT_LOOP;
+}
 
 int decode_packet(const u_char* packet,
                   const struct pcap_pkthdr* header,
+                  int linktype,
                   PacketInfo* out) {
     memset(out, 0, sizeof(PacketInfo));
     out->timestamp = header->ts;
     out->length    = header->len;
 
-    if (header->caplen < ETHERNET_HEADER_LEN) return 0;
+    // Step 1: link layer — work out where the IP header starts and which IP version it is
+    size_t link_len;
+    int ip_version;
 
-    const struct ether_header* eth = (const struct ether_header*)packet;
-    uint16_t ether_type = ntohs(eth->ether_type);
-    const u_char* ip_packet = packet + ETHERNET_HEADER_LEN;
-    size_t ip_packet_len = header->caplen - ETHERNET_HEADER_LEN;
+    if (linktype == DLT_EN10MB) {
+        if (header->caplen < ETHERNET_HEADER_LEN) return 0;
+        const struct ether_header* eth = (const struct ether_header*)packet;
+        uint16_t ether_type = ntohs(eth->ether_type);
+        if (ether_type == ETHERTYPE_IP)        ip_version = 4;
+        else if (ether_type == ETHERTYPE_IPV6) ip_version = 6;
+        else return 0;
+        link_len = ETHERNET_HEADER_LEN;
+    } else if (linktype == DLT_NULL || linktype == DLT_LOOP) {
+        // 4-byte address-family header whose byte order and values differ by OS,
+        // so read the version nibble of the IP header instead.
+        if (header->caplen < NULL_HEADER_LEN + 1) return 0;
+        ip_version = packet[NULL_HEADER_LEN] >> 4;
+        if (ip_version != 4 && ip_version != 6) return 0;
+        link_len = NULL_HEADER_LEN;
+    } else {
+        return 0;
+    }
+
+    const u_char* ip_packet = packet + link_len;
+    size_t ip_packet_len = header->caplen - link_len;
     uint8_t protocol;
     const u_char* transport;
     size_t transport_len;
 
-    if (ether_type == ETHERTYPE_IP) {
+    // Step 2: network layer
+    if (ip_version == 4) {
         if (ip_packet_len < sizeof(struct ip)) return 0;
         const struct ip* ip_hdr = (const struct ip*)ip_packet;
         size_t ip_hdr_len = (size_t)ip_hdr->ip_hl * 4;
@@ -42,7 +68,7 @@ int decode_packet(const u_char* packet,
         protocol = ip_hdr->ip_p;
         transport = ip_packet + ip_hdr_len;
         transport_len = ip_packet_len - ip_hdr_len;
-    } else if (ether_type == ETHERTYPE_IPV6) {
+    } else { 
         if (ip_packet_len < sizeof(struct ip6_hdr)) return 0;
         const struct ip6_hdr* ip6_hdr = (const struct ip6_hdr*)ip_packet;
 
@@ -54,10 +80,9 @@ int decode_packet(const u_char* packet,
         protocol = ip6_hdr->ip6_nxt;
         transport = ip_packet + sizeof(struct ip6_hdr);
         transport_len = ip_packet_len - sizeof(struct ip6_hdr);
-    } else {
-        return 0;
     }
 
+    // Step 3: Transport layer
     if (protocol == IPPROTO_TCP) {
         if (transport_len < sizeof(struct tcphdr)) return 0;
         const struct tcphdr* tcp = (const struct tcphdr*)transport;

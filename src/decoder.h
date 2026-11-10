@@ -17,9 +17,14 @@ typedef struct {
     int is_syn_ack;
 } PacketInfo;
 
-// Returns 1 on success, 0 if not an IP packet
+// Returns 1 if the capture's link-layer type can be decoded
+int decoder_supports_linktype(int linktype);
+
+// Returns 1 on success, 0 if not a decodable IPv4/IPv6 packet.
+// linktype is the value of pcap_datalink() for the capture handle.
 int decode_packet(const u_char* packet,
                   const struct pcap_pkthdr* header,
+                  int linktype,
                   PacketInfo* out);
 
 #endif

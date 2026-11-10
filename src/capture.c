@@ -9,7 +9,8 @@
 #define PRINT_EVERY_N_FLOW_PACKETS 100
 
 static ConnectionTracker g_tracker;
-static unsigned int g_flow_packets = 0;
+static int g_linktype = DLT_EN10MB; 
+static unsigned long g_flow_packets = 0;
 static LatencyTracker g_latency;
 
 void packet_handler(u_char* args,
@@ -40,6 +41,17 @@ int list_capture_devices(void) {
     return 0;
 }
 
+// Shared setup for every capture handle: check we can decode its link layer
+static int prepare_handle(pcap_t* handle) {
+    g_linktype = pcap_datalink(handle);
+    if (!decoder_supports_linktype(g_linktype)) {
+        fprintf(stderr, "Unsupported link-layer type: %s (%d)\n",
+                pcap_datalink_val_to_name(g_linktype), g_linktype);
+        return 0;
+    }
+    return 1;
+}
+
 pcap_t* open_capture(const char* device, char* errbuf) {
     pcap_if_t* alldevs;
 
@@ -56,7 +68,10 @@ pcap_t* open_capture(const char* device, char* errbuf) {
     }
 
     if (selected == NULL) {
-        fprintf(stderr, "Capture interface not found: %s\n", device);
+        if (device != NULL)
+            fprintf(stderr, "Capture interface not found: %s (try -l to list interfaces)\n", device);
+        else
+            fprintf(stderr, "No capture interfaces found\n");
         pcap_freealldevs(alldevs);
         return NULL;
     }
@@ -67,6 +82,10 @@ pcap_t* open_capture(const char* device, char* errbuf) {
     pcap_freealldevs(alldevs);
     if (handle == NULL) {
         fprintf(stderr, "Could not open device: %s\n", errbuf);
+        return NULL;
+    }
+    if (!prepare_handle(handle)) {
+        pcap_close(handle);
         return NULL;
     }
     return handle;
@@ -87,7 +106,7 @@ void packet_handler(u_char* args,
     (void)args;
     PacketInfo info;
 
-    if (!decode_packet(packet, header, &info)) return;
+    if (!decode_packet(packet, header, g_linktype, &info)) return;
     
     int is_tcp = strcmp(info.protocol, "TCP") == 0;
     int is_udp = strcmp(info.protocol, "UDP") == 0;
