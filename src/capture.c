@@ -6,8 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define PRINT_EVERY_N_FLOW_PACKETS 100
+
 static ConnectionTracker g_tracker;
-static int g_packet_count = 0;
+static unsigned int g_flow_packets = 0;
 static LatencyTracker g_latency;
 
 void packet_handler(u_char* args,
@@ -86,12 +88,10 @@ void packet_handler(u_char* args,
     PacketInfo info;
 
     if (!decode_packet(packet, header, &info)) return;
+    
+    int is_tcp = strcmp(info.protocol, "TCP") == 0;
+    int is_udp = strcmp(info.protocol, "UDP") == 0;
 
-    if (strcmp(info.protocol, "TCP") == 0 ||
-        strcmp(info.protocol, "UDP") == 0) {
-        tracker_update(&g_tracker, &info);
-        g_packet_count++;
-    }
 
     if (strcmp(info.protocol, "ICMP") == 0 ||
         strcmp(info.protocol, "ICMPv6") == 0) {
@@ -100,7 +100,7 @@ void packet_handler(u_char* args,
         fflush(stdout);
     }
 
-    if (strcmp(info.protocol, "TCP") == 0) {
+    if (is_tcp) {
         if (info.is_syn) {
             latency_record_syn(&g_latency, &info);
         } else if (info.is_syn_ack) {
@@ -113,7 +113,11 @@ void packet_handler(u_char* args,
         }
     }
 
-    if (g_packet_count % 100 == 0 && g_packet_count > 0) {
+    if (is_tcp || is_udp) {
+        tracker_update(&g_tracker, &info);
+        g_flow_packets++;
+    }
+    if (g_flow_packets % PRINT_EVERY_N_FLOW_PACKETS == 0 ) {
         tracker_print(&g_tracker);
     }
 }
