@@ -3,14 +3,18 @@
 
 #include <pcap.h>
 
-// Opens a live capture session on the selected interface, or the first available one.
-pcap_t* open_capture(const char* device, char* errbuf);
-
 // Prints the available capture interfaces.
 int list_capture_devices(void);
 
-// Starts the capture loop — calls packet_handler for each packet
-// count = 0 means capture indefinitely
+// Opens a live capture on the given interface (NULL = first available).
+// filter is an optional BPF expression, e.g. "tcp port 443" (NULL = none).
+pcap_t* open_capture(const char* device, const char* filter, char* errbuf);
+
+// Opens a saved .pcap file instead of a live interface.
+pcap_t* open_offline(const char* path, const char* filter, char* errbuf);
+
+// Runs the capture loop until count packets, end of file, or Ctrl+C.
+// count = 0 means no packet limit.
 void start_capture(pcap_t* handle, int count);
 
 // Prints the connection table plus packet/drop counters.

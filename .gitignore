@@ -3,3 +3,4 @@ analyzer
 .DS_Store
 .vscode/
 *.diff
+*.pcap

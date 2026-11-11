@@ -50,17 +50,33 @@ int list_capture_devices(void) {
 }
 
 // Shared setup for every capture handle: check we can decode its link layer
-static int prepare_handle(pcap_t* handle) {
+static int prepare_handle(pcap_t* handle, const char* filter) {
     g_linktype = pcap_datalink(handle);
     if (!decoder_supports_linktype(g_linktype)) {
         fprintf(stderr, "Unsupported link-layer type: %s (%d)\n",
                 pcap_datalink_val_to_name(g_linktype), g_linktype);
         return 0;
     }
+    if (filter != NULL) {
+    struct bpf_program prog;
+    // Compile the filter expression into BPF bytecode, then attach it so the
+    // kernel (or libpcap, for files) drops non-matching packets before our callback.
+    if (pcap_compile(handle, &prog, filter, 1, PCAP_NETMASK_UNKNOWN) == -1) {
+        fprintf(stderr, "Bad filter '%s': %s\n", filter, pcap_geterr(handle));
+        return 0;
+    }
+    if (pcap_setfilter(handle, &prog) == -1) {
+        fprintf(stderr, "Could not apply filter: %s\n", pcap_geterr(handle));
+        pcap_freecode(&prog);
+        return 0;
+    }
+    pcap_freecode(&prog);
+    printf("Filter: %s\n", filter);
+    }
     return 1;
 }
 
-pcap_t* open_capture(const char* device, char* errbuf) {
+pcap_t* open_capture(const char* device, const char* filter, char* errbuf) {
     pcap_if_t* alldevs;
 
     if (pcap_findalldevs(&alldevs, errbuf) == -1) {
@@ -106,11 +122,26 @@ pcap_t* open_capture(const char* device, char* errbuf) {
     if (status > 0) {
         fprintf(stderr, "Warning: %s\n", pcap_geterr(handle));
     }
-    if (!prepare_handle(handle)) {
+    if (!prepare_handle(handle, filter)) {
         pcap_close(handle);
         return NULL;
     }
     g_is_live = 1;
+    return handle;
+}
+
+pcap_t* open_offline(const char* path, const char* filter, char* errbuf) {
+    pcap_t* handle = pcap_open_offline(path, errbuf);
+    if (handle == NULL) {
+        fprintf(stderr, "Could not open file: %s\n", errbuf);
+        return NULL;
+    }
+    printf("Reading from file: %s\n", path);
+    if (!prepare_handle(handle, filter)) {
+        pcap_close(handle);
+        return NULL;
+    }
+    g_is_live = 0;
     return handle;
 }
 
