@@ -86,11 +86,25 @@ pcap_t* open_capture(const char* device, char* errbuf) {
 
     printf("Listening on interface: %s\n", selected->name);
 
-    pcap_t* handle = pcap_open_live(selected->name, 65536, 1, 1000, errbuf);
+    pcap_t* handle = pcap_create(selected->name, errbuf);
     pcap_freealldevs(alldevs);
     if (handle == NULL) {
         fprintf(stderr, "Could not open device: %s\n", errbuf);
         return NULL;
+    }
+    pcap_set_snaplen(handle, 65536);
+    pcap_set_promisc(handle, 1);
+    pcap_set_timeout(handle, 1000);
+    pcap_set_immediate_mode(handle, 1);
+
+    int status = pcap_activate(handle);
+    if (status < 0) {
+        fprintf(stderr, "Could not activate device: %s\n", pcap_geterr(handle));
+        pcap_close(handle);
+        return NULL;
+    }
+    if (status > 0) {
+        fprintf(stderr, "Warning: %s\n", pcap_geterr(handle));
     }
     if (!prepare_handle(handle)) {
         pcap_close(handle);
@@ -158,7 +172,7 @@ void packet_handler(u_char* args,
     g_total_seen++;
     if (!decode_packet(packet, header, g_linktype, &info)) return;
     g_decoded++;
-    
+
     int is_tcp = strcmp(info.protocol, "TCP") == 0;
     int is_udp = strcmp(info.protocol, "UDP") == 0;
 
