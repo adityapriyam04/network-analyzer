@@ -17,10 +17,11 @@ void tracker_init(ConnectionTracker* t) {
 }
 
 void tracker_update(ConnectionTracker* t, const PacketInfo* pkt) {
+    char src[56], dst[56];
+    format_endpoint(src, sizeof(src), pkt->src_ip, pkt->src_port);
+    format_endpoint(dst, sizeof(dst), pkt->dst_ip, pkt->dst_port);
     char key[128];
-    snprintf(key, sizeof(key), "%s:%d->%s:%d",
-             pkt->src_ip, pkt->src_port,
-             pkt->dst_ip, pkt->dst_port);
+    snprintf(key, sizeof(key), "%s -> %s", src, dst);
 
     unsigned int idx = hash_key(key);
     unsigned int start = idx;
@@ -54,7 +55,12 @@ void tracker_update(ConnectionTracker* t, const PacketInfo* pkt) {
 
     } while (idx != start);
 
-    fprintf(stderr, "Connection table full!\n");
+    // Warn once, not on every packet
+    static int warned = 0;
+    if (!warned) {
+        fprintf(stderr, "Connection table full! New connections are not being tracked.\n");
+        warned = 1;
+    }
 }
 
 void tracker_print(const ConnectionTracker* t) {

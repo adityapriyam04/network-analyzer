@@ -1,5 +1,4 @@
 #include "decoder.h"
-#include <stdio.h>
 #include <string.h>
 #include <net/ethernet.h>
 #include <netinet/ip.h>
@@ -105,4 +104,11 @@ int decode_packet(const u_char* packet,
         strncpy(out->protocol, "???", sizeof(out->protocol));
     }
     return 1;
+}
+
+void format_endpoint(char* out, size_t size, const char* ip, uint16_t port) {
+    if (strchr(ip, ':') != NULL)
+        snprintf(out, size, "[%s]:%u", ip, (unsigned)port);
+    else
+        snprintf(out, size, "%s:%u", ip, (unsigned)port);
 }

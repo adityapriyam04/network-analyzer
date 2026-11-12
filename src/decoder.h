@@ -27,4 +27,7 @@ int decode_packet(const u_char* packet,
                   int linktype,
                   PacketInfo* out);
 
+// Formats "ip:port" for IPv4 and "[ip]:port" for IPv6 (brackets avoid ambiguity with the colons in the address).
+void format_endpoint(char* out, size_t size, const char* ip, uint16_t port);
+
 #endif

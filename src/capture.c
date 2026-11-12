@@ -238,9 +238,10 @@ void packet_handler(u_char* args,
         } else if (info.is_syn_ack) {
             double rtt = latency_compute_rtt(&g_latency, &info);
             if (rtt >= 0) {
-                printf("[RTT] %s:%d -> %s:%d = %.2f ms\n",
-                       info.dst_ip, info.dst_port,
-                       info.src_ip, info.src_port, rtt);
+                char client[56], server[56];
+                format_endpoint(client, sizeof(client), info.dst_ip, info.dst_port);
+                format_endpoint(server, sizeof(server), info.src_ip, info.src_port);
+                printf("[RTT] %s -> %s : %.2f ms\n", client, server, rtt);
             }
         }
     }
