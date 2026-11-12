@@ -7,6 +7,7 @@
 #include <string.h>
 #include <signal.h>
 #include <time.h>
+#include <unistd.h>
 
 static ConnectionTracker g_tracker;
 static pcap_t* g_handle = NULL;
@@ -24,6 +25,12 @@ static time_t g_first_ts        = 0;   // timestamp (seconds) of the first packe
 static time_t g_next_report     = 0;   // when the next snapshot is due
 
 static LatencyTracker g_latency;
+
+// Table size and live status line (-n N; status line only on a live terminal)
+static int    g_top_n           = 10;
+static int    g_show_status     = 0;   // live capture + stderr is a terminal
+static int    g_status_visible  = 0;   // a status line is currently on screen
+static time_t g_last_status     = 0;   // last time we redrew it
 
 void packet_handler(u_char* args,
                     const struct pcap_pkthdr* header,
@@ -149,15 +156,38 @@ pcap_t* open_offline(const char* path, const char* filter, char* errbuf) {
     return handle;
 }
 
+// The status line lives on stderr so it never ends up in a redirected capture log.
+static void status_clear(void) {
+    if (g_status_visible) {
+        fputs("\r\033[K", stderr);   // carriage return + erase to end of line
+        g_status_visible = 0;
+    }
+}
+
+static void status_draw(long elapsed) {
+    unsigned int dropped = 0;
+    struct pcap_stat st;
+    if (g_handle != NULL && pcap_stats(g_handle, &st) == 0) dropped = st.ps_drop;
+    fprintf(stderr, "\r[ %02ld:%02ld:%02ld ]  packets: %lu   flows: %d   dropped: %u\033[K",
+            elapsed / 3600, (elapsed / 60) % 60, elapsed % 60,
+            g_total_seen, g_tracker.count, dropped);
+    fflush(stderr);
+    g_status_visible = 1;
+}
+
+
 static void on_sigint(int sig) {
     (void)sig;
     // Safe to call from a signal handler: pcap_breakloop only sets a flag that pcap_loop checks.
     if (g_handle != NULL) pcap_breakloop(g_handle);
 }
 
-void start_capture(pcap_t* handle, int count, int report_interval) {
+void start_capture(pcap_t* handle, int count, int report_interval, int top_n) {
     g_handle = handle;
     g_report_interval = report_interval;
+    g_top_n = top_n;
+    g_show_status = g_is_live && isatty(STDERR_FILENO);
+    if (g_show_status) status_draw(0);
 
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
@@ -182,15 +212,18 @@ static void print_counters(void) {
 
 // One periodic report: the connection table plus the counters so far.
 static void report_snapshot(long elapsed_sec) {
-    printf("\n--- Snapshot at +%lds ---\n", elapsed_sec);
-    tracker_print(&g_tracker);
+    status_clear();
+    printf("\n--- Snapshot at +%lds ---", elapsed_sec);
+    tracker_print_top(&g_tracker, g_top_n);
+    printf("\nCounters so far:\n");
     print_counters();
     fflush(stdout);
 }
 
 void print_summary(pcap_t* handle) {
-    tracker_print(&g_tracker);
-
+    status_clear();
+    tracker_print_top(&g_tracker, g_top_n);
+    
     printf("\n=== Capture Summary ===\n");
     print_counters();
 
@@ -227,6 +260,7 @@ void packet_handler(u_char* args,
 
     if (strcmp(info.protocol, "ICMP") == 0 ||
         strcmp(info.protocol, "ICMPv6") == 0) {
+        status_clear();
         printf("[%s] %s -> %s (%u bytes)\n",
                info.protocol, info.src_ip, info.dst_ip, info.length);
         fflush(stdout);
@@ -238,6 +272,7 @@ void packet_handler(u_char* args,
         } else if (info.is_syn_ack) {
             double rtt = latency_compute_rtt(&g_latency, &info);
             if (rtt >= 0) {
+                status_clear();
                 char client[56], server[56];
                 format_endpoint(client, sizeof(client), info.dst_ip, info.dst_port);
                 format_endpoint(server, sizeof(server), info.src_ip, info.src_port);
@@ -251,16 +286,20 @@ void packet_handler(u_char* args,
         g_flow_packets++;
     }
     
-    // Time-based snapshots (only with -s). The first packet starts the clock.
-    if (g_report_interval > 0) {
-        time_t now = header->ts.tv_sec;
-        if (g_first_ts == 0) {
-            g_first_ts = now;
-            g_next_report = now + g_report_interval;
-        } else if (now >= g_next_report) {
-            report_snapshot((long)(now - g_first_ts));
-            // Skip ahead past any quiet gap so we print once, not once per missed interval
-            while (g_next_report <= now) g_next_report += g_report_interval;
-        }
+    // Capture clock: the first packet starts it. Used for -s snapshots and the live status line.
+    time_t now = header->ts.tv_sec;
+    if (g_first_ts == 0) {
+        g_first_ts = now;
+        g_next_report = now + g_report_interval;
+    }
+    if (g_report_interval > 0 && now >= g_next_report) {
+        report_snapshot((long)(now - g_first_ts));
+        // Skip ahead past any quiet gap so we print once, not once per missed interval
+        while (g_next_report <= now) g_next_report += g_report_interval;
+    }
+    // Live status line: redraw at most once per second of capture time
+    if (g_show_status && now != g_last_status) {
+        g_last_status = now;
+        status_draw((long)(now - g_first_ts));
     }
 }

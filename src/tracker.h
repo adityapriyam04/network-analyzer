@@ -27,6 +27,7 @@ typedef struct {
 
 void tracker_init(ConnectionTracker* t);
 void tracker_update(ConnectionTracker* t, const PacketInfo* pkt);
-void tracker_print(const ConnectionTracker* t);
+// Prints the top_n connection ranked by bytes (descending)
+void tracker_print_top(const ConnectionTracker* t, int top_n);
 
 #endif

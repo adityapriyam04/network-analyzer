@@ -16,7 +16,8 @@ pcap_t* open_offline(const char* path, const char* filter, char* errbuf);
 // Runs the capture loop until count packets, end of file, or Ctrl+C.
 // count = 0 means no packet limit.
 // report_interval = print a snapshot every N seconds of capture time (0 = off).
-void start_capture(pcap_t* handle, int count, int report_interval);
+// top_n = how many connection the table shows (ranked by bytes, descending).
+void start_capture(pcap_t* handle, int count, int report_interval, int top_n);
 
 // Prints the connection table plus packet/drop counters.
 void print_summary(pcap_t* handle);
