@@ -3,7 +3,7 @@
 Dependency-free (pure stdlib). Checksums are left zero: the analyzer reads
 header fields, it does not validate checksums, so this does not affect parsing.
 
-Usage: python3 make_pcap.py <num_packets> <output.pcap>
+Usage: python3 make_pcapTestData.py <num_packets> <output.pcap>
 """
 import struct, sys, random
 

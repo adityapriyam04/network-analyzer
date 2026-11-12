@@ -9,8 +9,8 @@ Timed runs send output to /dev/null so we measure parsing + flow tracking,
 not terminal rendering. The best (fastest) of N runs is reported to reduce
 noise from other programs using the CPU.
 
-Usage:   python3 bench.py <analyzer> <file.pcap> [runs]
-Example: python3 bench.py ./analyzer big.pcap
+Usage:   python3 testBench.py <analyzer> <file.pcap> [runs]
+Example: python3 testBench.py ./analyzer testData.pcap
 """
 import re, subprocess, sys, time
 
