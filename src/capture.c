@@ -6,8 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
-
-#define PRINT_EVERY_N_FLOW_PACKETS 100
+#include <time.h>
 
 static ConnectionTracker g_tracker;
 static pcap_t* g_handle = NULL;
@@ -18,6 +17,11 @@ static int g_is_live = 0;
 static unsigned long g_total_seen    = 0;  // every packet the callback received
 static unsigned long g_decoded       = 0;  // IPv4/IPv6 packets we could parse
 static unsigned long g_flow_packets  = 0;  // TCP + UDP packets fed into the tracker
+
+// Periodic reporting (-s N). Timed with packet timestamps
+static int    g_report_interval = 0;   // seconds; 0 = off (only the final summary)
+static time_t g_first_ts        = 0;   // timestamp (seconds) of the first packet
+static time_t g_next_report     = 0;   // when the next snapshot is due
 
 static LatencyTracker g_latency;
 
@@ -151,8 +155,9 @@ static void on_sigint(int sig) {
     if (g_handle != NULL) pcap_breakloop(g_handle);
 }
 
-void start_capture(pcap_t* handle, int count) {
+void start_capture(pcap_t* handle, int count, int report_interval) {
     g_handle = handle;
+    g_report_interval = report_interval;
 
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
@@ -169,13 +174,25 @@ void start_capture(pcap_t* handle, int count) {
     g_handle = NULL;
 }
 
+static void print_counters(void) {
+    printf("Packets received by callback : %lu\n", g_total_seen);
+    printf("Decoded (IPv4/IPv6)          : %lu\n", g_decoded);
+    printf("TCP/UDP packets tracked      : %lu\n", g_flow_packets);
+}
+
+// One periodic report: the connection table plus the counters so far.
+static void report_snapshot(long elapsed_sec) {
+    printf("\n--- Snapshot at +%lds ---\n", elapsed_sec);
+    tracker_print(&g_tracker);
+    print_counters();
+    fflush(stdout);
+}
+
 void print_summary(pcap_t* handle) {
     tracker_print(&g_tracker);
 
     printf("\n=== Capture Summary ===\n");
-    printf("Packets received by callback : %lu\n", g_total_seen);
-    printf("Decoded (IPv4/IPv6)          : %lu\n", g_decoded);
-    printf("TCP/UDP packets tracked      : %lu\n", g_flow_packets);
+    print_counters();
 
     // Kernel-level stats only exist for live captures. ps_drop counts packets
     // the OS dropped because our callback did not keep up (buffer full).
@@ -232,7 +249,17 @@ void packet_handler(u_char* args,
         tracker_update(&g_tracker, &info);
         g_flow_packets++;
     }
-    if (g_flow_packets % PRINT_EVERY_N_FLOW_PACKETS == 0 ) {
-        tracker_print(&g_tracker);
+    
+    // Time-based snapshots (only with -s). The first packet starts the clock.
+    if (g_report_interval > 0) {
+        time_t now = header->ts.tv_sec;
+        if (g_first_ts == 0) {
+            g_first_ts = now;
+            g_next_report = now + g_report_interval;
+        } else if (now >= g_next_report) {
+            report_snapshot((long)(now - g_first_ts));
+            // Skip ahead past any quiet gap so we print once, not once per missed interval
+            while (g_next_report <= now) g_next_report += g_report_interval;
+        }
     }
 }
